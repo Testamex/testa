@@ -1007,7 +1007,7 @@ contract PlanetFarm is Ownable, ReentrancyGuard, IFarm {
     function payToEntry(uint256 amount) external {
         (bool success, ) = testa.call(abi.encodeWithSignature("transferFrom(address,address,uint256)", msg.sender, config.getCompany(), amount));
         require((amount > 0) && success);
-        if(config.getPayAmount() == amount){
+        if(amount >= config.getPayAmount()) {
             users[msg.sender] = true;
         }
     }
@@ -1024,17 +1024,16 @@ contract PlanetFarm is Ownable, ReentrancyGuard, IFarm {
         uint256 rewardAmount = getUserReward(msg.sender);
         uint256 _harvestFee = config.getTestaFee(rewardAmount);
         
-        require(IERC20(testa).balanceOf(address(msg.sender)) > _harvestFee, "Must have enought testa before harvest");
+        require(IERC20(testa).balanceOf(address(msg.sender)) > _harvestFee, "Must have enough testa before harvest");
         (bool success, ) = testa.call(abi.encodeWithSignature("transferFrom(address,address,uint256)", msg.sender, config.getCompany(), _harvestFee));
         require(success);
+        removeReward(msg.sender, rewardAmount);
+        SafeToken.safeTransferETH(msg.sender, rewardAmount);
         if(_amount > 0) {
             user.amount = user.amount.sub(_amount);
-            removeReward(msg.sender, rewardAmount);
-
             lpToken.safeTransfer(address(msg.sender), _amount);
             jETHToken.safeTransfer(address(msg.sender), _amount);
             totalStake = totalStake.sub(_amount);
-            SafeToken.safeTransferETH(msg.sender, rewardAmount);
         }
         emit HarvestAndWithdraw(msg.sender, _amount);
     }
@@ -1051,7 +1050,7 @@ contract PlanetFarm is Ownable, ReentrancyGuard, IFarm {
         uint256 rewardAmount = getUserReward(msg.sender);
         uint256 _harvestFee = config.getTestaFee(rewardAmount);
         
-        require(IERC20(testa).balanceOf(address(msg.sender)) > _harvestFee, "Must have enought testa before harvest");
+        require(IERC20(testa).balanceOf(address(msg.sender)) > _harvestFee, "Must have enough testa before harvest");
         (bool success, ) = testa.call(abi.encodeWithSignature("transferFrom(address,address,uint256)", msg.sender, config.getCompany(), _harvestFee));
         require(success);
         removeReward(msg.sender, rewardAmount);

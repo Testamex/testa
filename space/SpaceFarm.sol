@@ -1040,6 +1040,11 @@ contract SpaceFarm is Ownable, ReentrancyGuard {
         _;
     }
 
+    modifier validPool(uint256 _pid) {
+        require(_pid < poolInfo.length);
+        _;
+    }
+
     function setjTestaAmount(uint256 _jTestaAmount) public onlyOwner {
         jTestaAmount = _jTestaAmount;
     }
@@ -1061,7 +1066,7 @@ contract SpaceFarm is Ownable, ReentrancyGuard {
         activeReward = _activeReward;
     }
 
-    function harvestAndWithdraw(uint256 _pid, uint256 _amount) public nonReentrant {
+    function harvestAndWithdraw(uint256 _pid, uint256 _amount) public nonReentrant validPool(_pid) {
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
         uint256 jETHSupply = pool.jETHToken.balanceOf(address(this));
@@ -1083,7 +1088,7 @@ contract SpaceFarm is Ownable, ReentrancyGuard {
         emit Withdraw(msg.sender, _pid, _amount);
     }
 
-    function harvest(uint256 _pid) public nonReentrant {
+    function harvest(uint256 _pid) public nonReentrant validPool(_pid) {
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
         uint256 lpSupply = pool.jETHToken.balanceOf(address(this));
@@ -1099,7 +1104,7 @@ contract SpaceFarm is Ownable, ReentrancyGuard {
         safeTestaTransfer(msg.sender, testaAmount);
     }
     
-    function firstActivate(uint256 _pid) public onlyEOA nonReentrant {
+    function firstActivate(uint256 _pid) public onlyEOA nonReentrant validPool(_pid) {
         require(IERC20(jTesta).balanceOf(msg.sender) >= jTestaAmount, "Insufficient jTesta amount");
         currentLiquidity = getLiquidity(_pid);
         PoolInfo storage pool = poolInfo[_pid];
@@ -1111,7 +1116,7 @@ contract SpaceFarm is Ownable, ReentrancyGuard {
         safeTestaTransfer(msg.sender, getTestaReward(_pid));
     }
 
-    function activate(uint256 _pid) public onlyEOA nonReentrant {
+    function activate(uint256 _pid) public onlyEOA nonReentrant validPool(_pid) {
         require(IERC20(jTesta).balanceOf(msg.sender) >= jTestaAmount, "Insufficient jTesta amount");
         currentLiquidity = getLiquidity(_pid);
         PoolInfo storage pool = poolInfo[_pid];
@@ -1192,9 +1197,17 @@ contract SpaceFarm is Ownable, ReentrancyGuard {
         return poolInfo.length;
     }
 
+    function checkPoolDuplicate(IERC20 jETHToken) internal {
+        uint256 length = poolInfo.length;
+        for(uint256 pid = 0; pid < length; ++pid) {
+            require(poolInfo[pid].jETHToken != jETHToken, "add: existing pool?");
+        }
+    }
+
     // Add a new lp to the pool. Can only be called by the owner.
     // XXX DO NOT add the same LP token more than once. Rewards will be messed up if you do.
     function add(uint256 startBlock, uint256 _allocPoint, address _lpToken, address _jETHToken, bool _withUpdate) public onlyOwner {
+        checkPoolDuplicate(IERC20(_jETHToken));
         if (_withUpdate) {
             massUpdatePools();
         }
@@ -1219,7 +1232,7 @@ contract SpaceFarm is Ownable, ReentrancyGuard {
     }
 
     // Update the given pool's Testa allocation point. Can only be called by the owner.
-    function set(uint256 _pid, uint256 _allocPoint, bool _withUpdate) public onlyOwner {
+    function set(uint256 _pid, uint256 _allocPoint, bool _withUpdate) public onlyOwner validPool(_pid) {
         if (_withUpdate) {
             massUpdatePools();
         }
@@ -1237,7 +1250,7 @@ contract SpaceFarm is Ownable, ReentrancyGuard {
         return _to.sub(_from);
     }
     
-    function clearPool(uint256 _pid) internal {
+    function clearPool(uint256 _pid) internal validPool(_pid) {
         PoolInfo storage pool = poolInfo[_pid];
         pool.accTestaPerShare = 0;
         pool.lastRewardBlock = block.number;
@@ -1268,7 +1281,7 @@ contract SpaceFarm is Ownable, ReentrancyGuard {
     }
 
     // Update reward variables of the given pool to be up-to-date.
-    function updatePool(uint256 _pid) public {
+    function updatePool(uint256 _pid) public validPool(_pid) {
         PoolInfo storage pool = poolInfo[_pid];
         if (block.number <= pool.lastRewardBlock) {
             return;
@@ -1285,7 +1298,7 @@ contract SpaceFarm is Ownable, ReentrancyGuard {
     }
 
     // Deposit LP tokens to TestaFarm for Testa allocation.
-    function deposit(uint256 _pid, uint256 _amount) public {
+    function deposit(uint256 _pid, uint256 _amount) public validPool(_pid) {
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
         updatePool(_pid);
@@ -1304,7 +1317,7 @@ contract SpaceFarm is Ownable, ReentrancyGuard {
     }
 
     // Withdraw LP tokens from TestaFarm.
-    function withdraw(uint256 _pid, uint256 _amount) public {
+    function withdraw(uint256 _pid, uint256 _amount) public validPool(_pid) {
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
         require(user.amount >= _amount, "No jETHToken cannot withdraw");
@@ -1320,13 +1333,14 @@ contract SpaceFarm is Ownable, ReentrancyGuard {
     }
 
     // Withdraw without caring about rewards. EMERGENCY ONLY.
-    function emergencyWithdraw(uint256 _pid) public {
+    function emergencyWithdraw(uint256 _pid) public validPool(_pid) {
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
-        pool.jETHToken.safeTransfer(address(msg.sender), user.amount);
-        emit EmergencyWithdraw(msg.sender, _pid, user.amount);
+        uint256 _amount = user.amount;
         user.amount = 0;
         user.rewardDebt[pool.debtIndexKey] = 0;
+        pool.jETHToken.safeTransfer(address(msg.sender), _amount);
+        emit EmergencyWithdraw(msg.sender, _pid, user.amount);
     }
 
     // Safe testa transfer function, just in case if rounding error causes pool to not have enough Testa.
